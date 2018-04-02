@@ -1,12 +1,32 @@
 using BenchmarkTools
 
-import Base: convert
+import Base: convert, full
 
 struct BlockSparseMatrixCSC{Tv,Ti}
     n::Ti
     nzval::Vector{Tv}
     rowval::Vector{Ti}
     colptr::Vector{Ti}
+end
+
+function full(A::BlockSparseMatrixCSC{Tv}) where {Tv}
+    F = zeros(2A.n, 2A.n)
+
+    nz_idx = 1
+
+    for j = 1 : A.n
+        col = 2j - 1
+        for i = A.colptr[j] : A.colptr[j + 1] - 1
+            row = A.rowval[i]
+            F[row + 0, col + 0] = A.nzval[nz_idx + 0]
+            F[row + 1, col + 0] = A.nzval[nz_idx + 1]
+            F[row + 0, col + 1] = A.nzval[nz_idx + 2]
+            F[row + 1, col + 1] = A.nzval[nz_idx + 3]
+            nz_idx += 4
+        end
+    end
+
+    F
 end
 
 function convert(::Type{BlockSparseMatrixCSC{Tv,Ti}}, A::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
@@ -35,7 +55,7 @@ function convert(::Type{BlockSparseMatrixCSC{Tv,Ti}}, A::SparseMatrixCSC{Tv,Ti})
             
             if j1 < A.colptr[i + 1] && j2 ≥ A.colptr[i + 2]
                 row = A.rowval[j1]
-            elseif j2 ≥ A.colptr[i + 1] && j1 < A.colptr[i + 2]
+            elseif j1 ≥ A.colptr[i + 1] && j2 < A.colptr[i + 2]
                 row = A.rowval[j2]
             else
                 row = min(A.rowval[j1], A.rowval[j2])
@@ -81,6 +101,17 @@ end
 
 banded_matrix(n = 100_000, k = 2) = spdiagm([rand(n - abs(i)) for i = -k:k], -k:k)
 
+function better_mul!(y::StridedVector{Tv}, A::SparseMatrixCSC{Tv,Ti}, x::StridedVector{Tv}) where {Tv,Ti}
+    @inbounds for i = 1 : A.m
+        xval = x[i]
+        for j = A.colptr[i] : A.colptr[i + 1] - 1
+            y[A.rowval[j]] += A.nzval[j] * xval
+        end
+    end
+
+    y
+end
+
 function mul!(y::StridedVector{Float64}, A::BlockSparseMatrixCSC{Float64,Int64}, x::StridedVector{Float64})
     # void bspmv(int64_t n, int64_t * __restrict__ colptr, int64_t * __restrict__ rowval, double * __restrict__ nzval, double * __restrict__ x, double * __restrict__ y)
     ccall((:bspmv, "./bspmv.so"), 
@@ -91,6 +122,17 @@ function mul!(y::StridedVector{Float64}, A::BlockSparseMatrixCSC{Float64,Int64},
     y
 end
 
+function compare_storage(A::SparseMatrixCSC, B::BlockSparseMatrixCSC)
+    @show length(B.nzval) / length(A.nzval)
+    @show length(B.colptr) / length(A.colptr)
+    @show length(B.rowval) / length(A.rowval)
+
+    A_size = sizeof(A.nzval) + sizeof(A.colptr) + sizeof(A.rowval)
+    B_size = sizeof(B.nzval) + sizeof(B.colptr) + sizeof(B.rowval)
+
+    @show B_size / A_size
+end
+
 """
     example(n, k)
 
@@ -99,10 +141,25 @@ matrix with 2k + 1 diagonals and of order n. With k = 1 we get a very inefficien
 BlockSparseMatrixCSC, since roughly 50% of the stored values are zero. With k = 2 we only
 store 16.67% zeros.
 """
-function benchmark(n = 100_000, k = 1)
-    A = banded_matrix(n, 1)
+function benchmark_banded(n = 100_000, k = 1)
+    A = banded_matrix(n, k)
     B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
     x = rand(n)
+
+    compare_storage(A, B)
+
+    fst = @benchmark mul!(y, $B, $x) setup = (y = zeros($n))
+    snd = @benchmark A_mul_B!(y, $A, $x) setup = (y = zeros($n))
+
+    fst, snd
+end
+
+function benchmark_random(n = 100_000, k = 1)
+    A = banded_matrix(n, k) + sprand(n, n, k / n)
+    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
+    x = rand(n)
+
+    compare_storage(A, B)
 
     fst = @benchmark mul!(y, $B, $x) setup = (y = zeros($n))
     snd = @benchmark A_mul_B!(y, $A, $x) setup = (y = zeros($n))
@@ -115,5 +172,5 @@ function example(n = 100_000, k = 1)
     B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
     x = rand(n)
 
-    mul!(zeros(n), B, x), A * x
+    mul!(zeros(n), B, x), A_mul_B!(zeros(n), A, x)
 end

@@ -40,10 +40,10 @@ void bspmv(int64_t n, int64_t * __restrict__ colptr, int64_t * __restrict__ rowv
             y_reg = _mm_load_pd(y_ptr);
 
             // y <- y .+ A[:, 1] .* x
-            y_reg = _mm_fmadd_sd(tmp1_reg, b1_reg, y_reg);
+            y_reg = _mm_fmadd_pd(tmp1_reg, b1_reg, y_reg);
             
             // y <- y .+ A[:, 2] .* x
-            y_reg = _mm_fmadd_sd(tmp2_reg, b2_reg, y_reg);
+            y_reg = _mm_fmadd_pd(tmp2_reg, b2_reg, y_reg);
 
             // store y
             _mm_store_pd(y_ptr, y_reg);

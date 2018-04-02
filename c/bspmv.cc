@@ -14,15 +14,15 @@ void bspmv(int64_t n, int64_t * __restrict__ colptr, int64_t * __restrict__ rowv
     double * A_ptr = nzval;
     double * x_ptr = x;
 
-    __m128d b1_reg, b2_reg, tmp1_reg, tmp2_reg, y_reg;
+    __m128d x1_reg, x2_reg, tmp1_reg, tmp2_reg, y_reg;
 
     // For each column of A
     #pragma nounroll
     for(int64_t j = 0; j < n; ++j)
     {
         // Load the x-values
-        b1_reg = _mm_load_pd1(x_ptr);
-        b2_reg = _mm_load_pd1(x_ptr + 1);
+        x1_reg = _mm_load_pd1(x_ptr);
+        x2_reg = _mm_load_pd1(x_ptr + 1);
 
         // Loop over each element in the column
         #pragma nounroll
@@ -40,10 +40,10 @@ void bspmv(int64_t n, int64_t * __restrict__ colptr, int64_t * __restrict__ rowv
             y_reg = _mm_load_pd(y_ptr);
 
             // y <- y .+ A[:, 1] .* x
-            y_reg = _mm_fmadd_pd(tmp1_reg, b1_reg, y_reg);
+            y_reg = _mm_fmadd_pd(tmp1_reg, x1_reg, y_reg);
             
             // y <- y .+ A[:, 2] .* x
-            y_reg = _mm_fmadd_pd(tmp2_reg, b2_reg, y_reg);
+            y_reg = _mm_fmadd_pd(tmp2_reg, x2_reg, y_reg);
 
             // store y
             _mm_store_pd(y_ptr, y_reg);

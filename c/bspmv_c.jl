@@ -168,7 +168,7 @@ function benchmark_banded(n = 100_000, k = 1)
 end
 
 function benchmark_random(n = 100_000, k = 1)
-    A = banded_matrix(n, k) + sprand(n, n, k / n)
+    A = sprand(n, n, k / n)
     B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
     x = rand(n)
 
@@ -201,6 +201,18 @@ function benchmark2_banded(n = 100_000, k = 1)
     fst, snd
 end
 
+function benchmark2_random(n = 100_000, k = 1)
+    A = sprand(n, n, k / n)
+    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
+    x = rand(n, 2)
+
+    compare_storage(A, B)
+
+    fst = @benchmark mul!(y, $B, $x) setup = (y = zeros($n, 2))
+    snd = @benchmark A_mul_B!(1.0, $A, $x, 1.0, y) setup = (y = zeros($n, 2))
+
+    fst, snd
+end
 
 function example2(n = 100_000, k = 2)
     A = banded_matrix(n, 1)

@@ -99,13 +99,21 @@ matrix with 2k + 1 diagonals and of order n. With k = 1 we get a very inefficien
 BlockSparseMatrixCSC, since roughly 50% of the stored values are zero. With k = 2 we only
 store 16.67% zeros.
 """
-function example(n = 100_000, k = 1)
+function benchmark(n = 100_000, k = 1)
     A = banded_matrix(n, 1)
-    B = block_matrix(A)
+    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
     x = rand(n)
 
     fst = @benchmark mul!(y, $B, $x) setup = (y = zeros($n))
     snd = @benchmark A_mul_B!(y, $A, $x) setup = (y = zeros($n))
 
     fst, snd
+end
+
+function example(n = 100_000, k = 1)
+    A = banded_matrix(n, 1)
+    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
+    x = rand(n)
+
+    mul!(zeros(n), B, x), A * x
 end

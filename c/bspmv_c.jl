@@ -122,6 +122,19 @@ function mul!(y::StridedVector{Float64}, A::BlockSparseMatrixCSC{Float64,Int64},
     y
 end
 
+"""
+Only implemented for square A and y and x of size n x 2 (no checks are done!)
+"""
+function mul!(y::StridedMatrix{Float64}, A::BlockSparseMatrixCSC{Float64,Int64}, x::StridedMatrix{Float64})
+    # void bspmv(int64_t n, int64_t * __restrict__ colptr, int64_t * __restrict__ rowval, double * __restrict__ nzval, double * __restrict__ x, double * __restrict__ y)
+    ccall((:bspmv2, "./bspmv2.so"), 
+          Void,
+          (Int64, Ptr{Int64}, Ptr{Int64}, Ptr{Float64}, Ptr{Float64}, Ptr{Float64}),
+          A.n, A.colptr, A.rowval, A.nzval, x, y)
+
+    y
+end
+
 function compare_storage(A::SparseMatrixCSC, B::BlockSparseMatrixCSC)
     @show length(B.nzval) / length(A.nzval)
     @show length(B.colptr) / length(A.colptr)
@@ -162,7 +175,7 @@ function benchmark_random(n = 100_000, k = 1)
     compare_storage(A, B)
 
     fst = @benchmark mul!(y, $B, $x) setup = (y = zeros($n))
-    snd = @benchmark A_mul_B!(y, $A, $x) setup = (y = zeros($n))
+    snd = @benchmark A_mul_B!(1.0, $A, $x, 1.0, y) setup = (y = zeros($n))
 
     fst, snd
 end
@@ -173,4 +186,26 @@ function example(n = 100_000, k = 1)
     x = rand(n)
 
     mul!(zeros(n), B, x), A_mul_B!(zeros(n), A, x)
+end
+
+function benchmark2_banded(n = 100_000, k = 1)
+    A = banded_matrix(n, k)
+    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
+    x = rand(n, 2)
+
+    compare_storage(A, B)
+
+    fst = @benchmark mul!(y, $B, $x) setup = (y = zeros($n, 2))
+    snd = @benchmark A_mul_B!(1.0, $A, $x, 1.0, y) setup = (y = zeros($n, 2))
+
+    fst, snd
+end
+
+
+function example2(n = 100_000, k = 2)
+    A = banded_matrix(n, 1)
+    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
+    x = rand(n, 2)
+
+    mul!(zeros(n, 2), B, x), A_mul_B!(zeros(n, 2), A, x)
 end

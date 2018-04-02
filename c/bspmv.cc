@@ -45,6 +45,14 @@ void bspmv(int64_t n, int64_t * __restrict__ colptr, int64_t * __restrict__ rowv
             // y <- y .+ A[:, 2] .* x
             y_reg = _mm_fmadd_pd(tmp2_reg, x2_reg, y_reg);
 
+            // tmp <- A[:, 1] * x, y <- y + tmp
+            // tmp1_reg = _mm_mul_pd(tmp1_reg, x1_reg);
+            // y_reg = _mm_add_pd(tmp1_reg, y_reg);
+
+            // tmp <- A[:, 2] * x, y <- y + tmp
+            // tmp2_reg = _mm_mul_pd(tmp2_reg, x2_reg);
+            // y_reg = _mm_add_pd(tmp2_reg, y_reg);
+
             // store y
             _mm_store_pd(y_ptr, y_reg);
 

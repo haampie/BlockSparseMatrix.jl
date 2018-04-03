@@ -93,30 +93,29 @@ end
 
 function example3(n = 100_000, k = 2)
     A = banded_matrix(n, k)
-    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
+    B = convert(CStyleBlockSparse{Float64,Int}, A)
     x = rand(n)
 
-    A_mul_B!(zeros(n), B, x), A_mul_B!(zeros(n), A, x)
+    native_A_mul_B!(zeros(n), B, x), A_mul_B!(zeros(n), A, x)
 end
 
 function bench_native(n = 100_000, k = 2)
     A = banded_matrix(n, k)
-    B = convert(BlockSparseMatrixCSC{Float64,Int}, A)
     C = convert(CStyleBlockSparse{Float64,Int}, A)
     x = rand(n)
 
-    bench_std    = @benchmark A_mul_B!(y, $A, $x) setup = (y = Vector{Float64}($n))
-    bench_native = @benchmark A_mul_B!(y, $B, $x) setup = (y = Vector{Float64}($n))
+    # bench_std    = @benchmark A_mul_B!(y, $A, $x) setup = (y = Vector{Float64}($n))
+    bench_native = @benchmark native_A_mul_B!(y, $C, $x) setup = (y = Vector{Float64}($n))
     bench_c      = @benchmark A_mul_B!(y, $C, $x) setup = (y = Vector{Float64}($n))
 
-    bench_std, bench_native, bench_c
+    bench_native, bench_c
 end
 
 function code_native()
-    B = convert(BlockSparseMatrixCSC{Float64,Int}, banded_matrix(100, 2))
-    x = reinterpret(BlockSparseMatrix.VecBlock{Float64}, rand(100))
-    y = reinterpret(BlockSparseMatrix.VecBlock{Float64}, rand(100))
+    B = convert(CStyleBlockSparse{Float64,Int}, banded_matrix(100, 2))
+    x = rand(100)
+    y = rand(100)
     
-    @code_native A_mul_B!(y, B, x)
+    @code_native native_A_mul_B!(y, B, x)
 end
 end

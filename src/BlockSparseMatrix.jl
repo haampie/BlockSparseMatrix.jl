@@ -4,7 +4,7 @@ using StaticArrays
 
 import Base: convert, full, A_mul_B!
 
-export BlockSparseMatrixCSC, CStyleBlockSparse
+export BlockSparseMatrixCSC, CStyleBlockSparse, native_A_mul_B!
 
 const Block{Tv} = SMatrix{2,2,Tv,4}
 const VecBlock{Tv} = SVector{2,Tv}
@@ -182,21 +182,45 @@ function A_mul_B!(y::StridedMatrix{Float64}, A::CStyleBlockSparse{Float64,Int64}
     y
 end
 
-function A_mul_B!(y::StridedVector{Tv}, A::BlockSparseMatrixCSC{Tv,Ti}, x::StridedVector{Tv}) where {Tv,Ti}
+function native_A_mul_B!(y::StridedVector{Tv}, A::CStyleBlockSparse{Tv,Ti}, x::StridedVector{Tv}) where {Tv,Ti}
     fill!(y, zero(Tv))
-    x′ = reinterpret(VecBlock{Tv}, x)
-    y′ = reinterpret(VecBlock{Tv}, y)
-    A_mul_B!(y′, A, x′)
-    y
-end
 
-function A_mul_B!(y::BlockVector{Tv}, A::BlockSparseMatrixCSC{Tv,Ti}, x::BlockVector{Tv}) where {Tv,Ti}
-    # This doesn't fill y with zeros.
-    @inbounds for i = 1 : A.n
-        xval = x[i]
-        for j = A.colptr[i] : A.colptr[i + 1] - 1
-            y[A.rowval[j]] += A.nzval[j] * xval
+    nzidx = 1
+    x_idx = 1
+    A_idx = 1
+    column = 1
+    @inbounds while column ≤ A.n
+        # Load the x values
+        x_block = VecBlock{Tv}(x[x_idx], x[x_idx + 1])
+        next_col = A.colptr[column + 1]
+        while nzidx < next_col
+
+            # Current row
+            row = A.rowval[nzidx]
+            y_block = VecBlock{Tv}(y[row], y[row + 1])
+
+            # Load the next block
+            A_block = Block{Tv}(
+                A.nzval[A_idx + 0], 
+                A.nzval[A_idx + 1], 
+                A.nzval[A_idx + 2], 
+                A.nzval[A_idx + 3]
+            )
+
+            # Do the computation
+            tmp = y_block + A_block * x_block
+
+            # Store
+            y[row + 0] = tmp[1]
+            y[row + 1] = tmp[2]
+
+            # Increment counters
+            A_idx += 4
+            nzidx += 1
         end
+        
+        column += 1
+        x_idx += 2
     end
     y
 end

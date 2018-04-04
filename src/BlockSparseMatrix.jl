@@ -4,7 +4,7 @@ using StaticArrays
 
 import Base: convert, full, A_mul_B!
 
-export BlockSparseMatrixCSC, CStyleBlockSparse, native_A_mul_B!
+export BlockSparseMatrixCSC, CStyleBlockSparse, native_A_mul_B!, native_A_mul_B_2!
 
 const Block{Tv} = SMatrix{2,2,Tv,4}
 const VecBlock{Tv} = SVector{2,Tv}
@@ -61,7 +61,7 @@ function to_block(A::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
     rowval = sizehint!(Vector{Ti}(), div(length(A.rowval), 2))
     colptr = Vector{Ti}(n_half + 1)
     colptr[1] = 1
-    B = @MMatrix zeros(2, 2)
+    B = @MMatrix zeros(Tv, 2, 2)
     
     # Loop over pairs of columns
     column = 0
@@ -182,30 +182,25 @@ function A_mul_B!(y::StridedMatrix{Float64}, A::CStyleBlockSparse{Float64,Int64}
     y
 end
 
-function native_A_mul_B!(y::StridedVector{Tv}, A::CStyleBlockSparse{Tv,Ti}, x::StridedVector{Tv}) where {Tv,Ti}
-    fill!(y, zero(Tv))
+function native_A_mul_B!(y::StridedVector{Ty}, A::CStyleBlockSparse{Ta,Ti}, x::StridedVector{Tx}) where {Ty,Ta,Tx,Ti}
+    fill!(y, zero(Ty))
 
-    nzidx = 1
-    x_idx = 1
-    A_idx = 1
-    column = 1
-    @inbounds while column ≤ A.n
+    x_idx, A_idx = 1, 1
+
+    @inbounds for j = 1 : A.n
         # Load the x values
-        x_block = VecBlock{Tv}(x[x_idx], x[x_idx + 1])
-        next_col = A.colptr[column + 1]
-        while nzidx < next_col
+        x_block = VecBlock{Tx}(x[x_idx + 0], x[x_idx + 1])
+
+        for i = A.colptr[j] : A.colptr[j + 1] - 1
 
             # Current row
-            row = A.rowval[nzidx]
-            y_block = VecBlock{Tv}(y[row], y[row + 1])
+            row = A.rowval[i]
+
+            # Load y
+            y_block = VecBlock{Ty}(y[row + 0], y[row + 1])
 
             # Load the next block
-            A_block = Block{Tv}(
-                A.nzval[A_idx + 0], 
-                A.nzval[A_idx + 1], 
-                A.nzval[A_idx + 2], 
-                A.nzval[A_idx + 3]
-            )
+            A_block = Block{Ta}(A.nzval[A_idx + 0], A.nzval[A_idx + 1], A.nzval[A_idx + 2], A.nzval[A_idx + 3])
 
             # Do the computation
             tmp = y_block + A_block * x_block
@@ -216,10 +211,8 @@ function native_A_mul_B!(y::StridedVector{Tv}, A::CStyleBlockSparse{Tv,Ti}, x::S
 
             # Increment counters
             A_idx += 4
-            nzidx += 1
         end
         
-        column += 1
         x_idx += 2
     end
     y

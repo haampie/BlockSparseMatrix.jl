@@ -1,6 +1,6 @@
 module BlockSparseMatrix
 
-using StaticArrays
+using StaticArrays, Ranges
 
 import Base: convert, full, A_mul_B!
 
@@ -185,19 +185,25 @@ end
 function native_A_mul_B!(y::StridedVector{Tv}, A::CStyleBlockSparse{Tv,Ti}, x::StridedVector{Tv}) where {Tv,Ti}
     fill!(y, zero(Tv))
 
-    nzidx = 1
     x_idx = 1
     A_idx = 1
-    column = 1
-    @inbounds while column ≤ A.n
+    
+    @inbounds for col = LeftOpen(0, A.n)
         # Load the x values
-        x_block = VecBlock{Tv}(x[x_idx], x[x_idx + 1])
-        next_col = A.colptr[column + 1]
-        while nzidx < next_col
+        x_block = VecBlock{Tv}(
+            x[x_idx + 0],
+            x[x_idx + 1]
+        )
+
+        for i = to(A.colptr[col], A.colptr[col + 1])
 
             # Current row
-            row = A.rowval[nzidx]
-            y_block = VecBlock{Tv}(y[row], y[row + 1])
+            row = A.rowval[i]
+
+            y_block = VecBlock{Tv}(
+                y[row + 0],
+                y[row + 1]
+            )
 
             # Load the next block
             A_block = Block{Tv}(
@@ -216,11 +222,60 @@ function native_A_mul_B!(y::StridedVector{Tv}, A::CStyleBlockSparse{Tv,Ti}, x::S
 
             # Increment counters
             A_idx += 4
-            nzidx += 1
         end
         
-        column += 1
         x_idx += 2
+    end
+    y
+end
+
+function native_A_mul_B_pointers!(y::StridedVector{Tv}, A::CStyleBlockSparse{Tv,Ti}, x::StridedVector{Tv}) where {Tv,Ti}
+    fill!(y, zero(Tv))
+
+    x_ptr = pointer(x)
+    A_ptr = pointer(A.nzval)
+    
+    @inbounds for col = LeftOpen(0, A.n)
+        # Load the x values
+        x_block = VecBlock{Tv}(
+            unsafe_load(x_ptr, 1),
+            unsafe_load(x_ptr, 2)
+        )
+
+        for i = to(A.colptr[col], A.colptr[col + 1])
+
+            # Current row
+            row = A.rowval[i]
+
+            y_ptr = pointer(y, row)
+
+            y_block = VecBlock{Tv}(
+                unsafe_load(y_ptr, 1),
+                unsafe_load(y_ptr, 2)
+            )
+
+            println(y_block)
+
+            # Load the next block
+            A_block = Block{Tv}(
+                unsafe_load(A_ptr, 1),
+                unsafe_load(A_ptr, 2),
+                unsafe_load(A_ptr, 3),
+                unsafe_load(A_ptr, 4)
+            )
+
+            # Do the computation
+            tmp = y_block + A_block * x_block
+
+            # Store
+            unsafe_store!(y_ptr, tmp[1], 1)
+            unsafe_store!(y_ptr, tmp[2], 2)
+
+            # Increment counters
+            A_ptr += 4
+        end
+        
+        x_ptr += 2
     end
     y
 end

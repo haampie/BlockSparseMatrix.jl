@@ -99,6 +99,14 @@ function example3(n = 100_000, k = 2)
     native_A_mul_B!(zeros(n), B, x), A_mul_B!(zeros(n), A, x)
 end
 
+function example4(n = 100_000, k = 2)
+    A = banded_matrix(n, k)
+    B = convert(CStyleBlockSparse{Float64,Int}, A)
+    x = rand(n)
+
+    BlockSparseMatrix.native_A_mul_B_pointers!(zeros(n), B, x), A_mul_B!(zeros(n), A, x)
+end
+
 function bench_native(n = 100_000, k = 2)
     A = banded_matrix(n, k)
     C = convert(CStyleBlockSparse{Float64,Int}, A)
@@ -116,6 +124,6 @@ function code_native()
     x = rand(100)
     y = rand(100)
     
-    @code_native native_A_mul_B!(y, B, x)
+    @code_native BlockSparseMatrix.native_A_mul_B_pointers!(y, B, x)
 end
 end
